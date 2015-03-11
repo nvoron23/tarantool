@@ -184,8 +184,6 @@ if instance_dir == nil then
     instance_dir = '/etc/tarantool/instances.enabled'
 end
 
--- print(home_dir .. '/.tarantool/default')
-
 default_cfg.pid_file   = default_cfg.pid_file and default_cfg.pid_file or "/var/run/tarantool"
 default_cfg.wal_dir    = default_cfg.wal_dir and default_cfg.wal_dir or "/var/lib/tarantool"
 default_cfg.snap_dir   = default_cfg.snap_dir and default_cfg.snap_dir or "/var/lib/tarantool"
@@ -311,7 +309,12 @@ end
 function start()
     log.info("Starting instance...")
     box.cfg = wrapper_cfg
-    dofile(instance_lua)
+    local success, data = pcall(dofile, instance_lua)
+    -- if load fails - show last 10 lines of the log file
+    if not success then
+        print('Start failed:')
+        os.execute('tail -n 10 ' .. default_cfg.logger)
+    end
 end
 
 
