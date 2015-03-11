@@ -113,7 +113,8 @@ local available_commands = {
     'logrotate',
     'status',
     'enter',
-    'restart'
+    'restart',
+    'reload'
 }
 
 local function usage()
@@ -163,8 +164,13 @@ else
 end
 
 shift_argv(arg, 0, 2)
+local local_config = false
+local home_dir = os.getenv("HOME")
 
-if fio.stat('/etc/sysconfig/tarantool') then
+if fio.stat(home_dir .. '/.tarantool/default') then
+    dofile(home_dir .. '/.tarantool/default')
+    local_config = true
+elseif fio.stat('/etc/sysconfig/tarantool') then
     dofile('/etc/sysconfig/tarantool')
 elseif fio.stat('/etc/default/tarantool') then
     dofile('/etc/default/tarantool')
@@ -178,12 +184,17 @@ if instance_dir == nil then
     instance_dir = '/etc/tarantool/instances.enabled'
 end
 
+-- print(home_dir .. '/.tarantool/default')
+
 default_cfg.pid_file   = default_cfg.pid_file and default_cfg.pid_file or "/var/run/tarantool"
 default_cfg.wal_dir    = default_cfg.wal_dir and default_cfg.wal_dir or "/var/lib/tarantool"
 default_cfg.snap_dir   = default_cfg.snap_dir and default_cfg.snap_dir or "/var/lib/tarantool"
 default_cfg.sophia_dir = default_cfg.sophia_dir and default_cfg.sophia_dir or "/var/lib/tarantool"
 default_cfg.logger     = default_cfg.logger and default_cfg.logger or "/var/log/tarantool"
-default_cfg.username   = default_cfg.username and default_cfg.username or "tarantool"
+
+if not local_config then
+    default_cfg.username = default_cfg.username and default_cfg.username or "tarantool"
+end
 
 -- create  a path to the control socket (admin console)
 local console_sock = fio.pathjoin(default_cfg.pid_file, instance .. '.control')
@@ -203,7 +214,7 @@ local function mkdir(dirname)
         os.exit(-1)
     end
 
-    if not fio.chown(dirname, default_cfg.username, default_cfg.username) then
+    if not local_config and not fio.chown(dirname, default_cfg.username, default_cfg.username) then
         log.error("Can't chown(%s, %s, %s): %s",
             default_cfg.username, default_cfg.username, dirname, errno.strerror())
     end
@@ -354,6 +365,7 @@ elseif cmd == 'enter' then
 elseif cmd == 'status' then
     if fio.stat(force_cfg.pid_file) == nil then
         if errno() == errno.ENOENT then
+            print(instance .. ' is stopped(pid file is not exist)')
             os.exit(1)
         end
         log.error("Cant access pidfile %s: %s",
@@ -380,7 +392,16 @@ elseif cmd == 'status' then
     end
 
     s:close()
+    print(instance .. ' is running(pid:' .. force_cfg.pid_file .. ')')
     os.exit(0)
+elseif cmd == 'reload' then
+    if fio.stat(arg[2]) == nil then
+        if errno() == errno.ENOENT then
+            print(arg[2] .. ': file not found')
+            os.exit(1)
+        end
+    end
+    dofile(arg[2])
 else
     log.error("Unknown command '%s'", cmd)
     os.exit(-1)
